@@ -1,8 +1,17 @@
-# Recommendations for deploying Briefer on GCP
+---
+title: GCE Virtual Machine (GCP)
+description: 'A GCP-specific guide for deploying Briefer.'
+icon: google
+---
 
-This document describes how to set up Briefer on a Google Cloud Platform (GCP) instance using Compute Engine, Docker, and, optionally, Nginx as a reverse proxy for public access.
+This guide describes how to set up Briefer on a Google Cloud Platform (GCP) instance using Google's Compute Engine (GCE), Docker, and, optionally, Nginx as a reverse proxy for public access.
 
-Note that these are recommendations from October 2024 and may be subject to change due to updates in GCP. If you encounter any issues, please feel free to update this document.
+<Note>
+  These are recommendations from October 2024 and may be subject to change due
+  to updates in GCP. If you encounter any issues, please create an issue or
+  submit a pull request [on our GitHub
+  repo](https://github.com/briefercloud/briefer).
+</Note>
 
 ## Table of Contents
 
@@ -13,13 +22,13 @@ Note that these are recommendations from October 2024 and may be subject to chan
 5. [(Optional) Configuring Nginx for Public Access](#optional-configuring-nginx-for-public-access)
 6. [Conclusion](#conclusion)
 
-## Prerequisites
+## 1. Prerequisites
 
-- Google Cloud Platform (GCP) account
+- A Google Cloud Platform (GCP) account
 - Access to Google Cloud Console
-- SSH key configured to access the GCP instance
+- An SSH key configured to access the GCP instance
 
-## Creating the Compute Engine Instance
+## 2. Creating the Compute Engine Instance
 
 1. Access the [Google Cloud Console](https://console.cloud.google.com/) and navigate to Compute Engine > VM instances.
 2. Click on "Create Instance."
@@ -29,13 +38,15 @@ Note that these are recommendations from October 2024 and may be subject to chan
    - **Disk**: 10 GB balanced
    - **IOPS**: 3060 provisioned
    - **Processing capacity**: 155 provisioned
+     <Info>
+       These system requirements are ideal for most cases. However, they can be
+       adjusted up or down depending on your project's needs and demands.
+     </Info>
 4. Give your instance a name and click "Create."
-
-| These requirements are ideal for most cases. However, they can be adjusted up or down depending on your project's needs and demands.
 
 Once the instance is initialized, connect to it via SSH.
 
-## Installing Docker
+## 3. Installing Docker
 
 1. Update the instance's packages:
    ```bash
@@ -65,7 +76,7 @@ Once the instance is initialized, connect to it via SSH.
    docker ps
    ```
 
-## Running Briefer
+## 4. Running Briefer
 
 After installing Docker, you can run Briefer using the following command:
 
@@ -78,7 +89,7 @@ docker run -d \
   briefercloud/briefer
 ```
 
-Verify that Briefer is running by accessing port `3000` on your instance's public IP:
+Ensure that Briefer is running by accessing port `3000` on your instance's public IP:
 
 ```bash
 curl http://<your_public_ip>:3000
@@ -86,12 +97,17 @@ curl http://<your_public_ip>:3000
 
 The Briefer interface should be accessible directly from the browser using the same URL.
 
-> [!NOTE]
-> Please note that you should not be able to login yet because you're serving Briefer over HTTP and have not set the `ALLOW_HTTP` environment variable to `true`. If you want to continue using Briefer over HTTP please add `--env ALLOW_HTTP=true` to the `docker run` command. If you want to use HTTPS, please set up SSL certificates.
+<Warning>
+  You should not be able to login yet because you're serving Briefer over HTTP
+  and have not set the `ALLOW_HTTP` environment variable to `true`. If you want
+  to continue using Briefer over HTTP please add `--env ALLOW_HTTP=true` to the
+  `docker run` command. If you want to use HTTPS, please set up SSL
+  certificates.
+</Warning>
 
 ---
 
-## (Optional) Configuring Nginx for Public Access
+## (Optional) 5. Configuring Nginx for Public Access
 
 To expose Briefer through a reverse proxy using Nginx:
 
@@ -103,7 +119,7 @@ To expose Briefer through a reverse proxy using Nginx:
    sudo systemctl enable nginx
    ```
 
-2. Verify that Nginx is running by accessing the public IP of the instance in your browser.
+2. Ensure that Nginx is running by accessing the public IP of the instance in your browser.
 
 3. Configure Nginx to serve Briefer:
 
@@ -112,7 +128,7 @@ To expose Briefer through a reverse proxy using Nginx:
    sudo nano /etc/nginx/sites-available/briefer
    ```
 
-   Add the following content to the file:
+   We recommend that you configure your Nginx instance with a file similar to the one below.
 
    ```nginx
    server {
@@ -135,7 +151,7 @@ To expose Briefer through a reverse proxy using Nginx:
    }
    ```
 
-4. Enable the new configuration:
+4. Enable the new Nginx configs.
 
    ```bash
    sudo ln -s /etc/nginx/sites-available/briefer /etc/nginx/sites-enabled/
@@ -144,4 +160,4 @@ To expose Briefer through a reverse proxy using Nginx:
    sudo systemctl restart nginx
    ```
 
-Now, Briefer will be accessible through your instance's public IP without needing to specify port 3000.
+Now, Briefer will be accessible through your instance's public IP without needing to specify port `3000`.
