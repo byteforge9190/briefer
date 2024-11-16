@@ -132,7 +132,7 @@ export class TextInputExecutor implements ITextInputExecutor {
         {
           workspaceId: this.workspaceId,
           documentId: this.documentId,
-          blockId: block.getAttribute('id'),
+          blockId: executionItem.getBlockId(),
           error: err,
         },
         'Failed to rename text input variable'
