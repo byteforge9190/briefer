@@ -17,6 +17,7 @@ import {
 import { WSSharedDocV2 } from '../../index.js'
 import { AIEvents } from '../../../../events/index.js'
 import { logger } from '../../../../logger.js'
+import { CanceledError } from 'axios'
 
 async function editWithAI(
   workspaceId: string,
@@ -32,7 +33,7 @@ async function editWithAI(
 
   event(workspace?.assistantModel ?? null)
 
-  await pythonEditStreamed(
+  return pythonEditStreamed(
     source,
     instructions,
     dataFrames,
@@ -71,15 +72,27 @@ export class AIPythonExecutor implements IPythonAIExecutor {
     _metadata: AITaskItemEditPythonMetadata,
     events: AIEvents
   ): Promise<void> {
+    let cleanup: () => void = () => {}
+    let aborted = false
     try {
+      cleanup = taskItem.observeStatus((status) => {
+        if (status._tag === 'aborting') {
+          aborted = true
+        }
+      })
+
       const instructions = getPythonBlockEditWithAIPrompt(block).toJSON()
       if (!instructions) {
         taskItem.setCompleted('error')
         return
       }
 
+      const callback = debounce((suggestions) => {
+        updatePythonAISuggestions(block, suggestions)
+      }, 50)
+
       const source = getPythonSource(block).toJSON()
-      await this.effects.editWithAI(
+      const { promise, abortController } = await this.effects.editWithAI(
         this.workspaceId,
         source,
         instructions,
@@ -87,13 +100,33 @@ export class AIPythonExecutor implements IPythonAIExecutor {
         (modelId) => {
           events.aiUsage('python', 'edit', modelId)
         },
-        debounce((suggestions) => {
-          updatePythonAISuggestions(block, suggestions)
-        }, 50)
+        callback
       )
+
+      if (aborted) {
+        abortController.abort()
+        taskItem.setCompleted('aborted')
+        cleanup()
+        return
+      }
+
+      cleanup = taskItem.observeStatus((status) => {
+        if (status._tag === 'aborting') {
+          abortController.abort()
+          aborted = true
+        }
+      })
+
+      await promise
+      callback.flush()
       closePythonEditWithAIPrompt(block, true)
-      taskItem.setCompleted('success')
+      taskItem.setCompleted(aborted ? 'aborted' : 'success')
     } catch (err) {
+      if (err instanceof CanceledError) {
+        taskItem.setCompleted('aborted')
+        return
+      }
+
       logger().error(
         {
           workspaceId: this.workspaceId,
@@ -104,6 +137,8 @@ export class AIPythonExecutor implements IPythonAIExecutor {
         'Error editing python block with AI'
       )
       taskItem.setCompleted('error')
+    } finally {
+      cleanup()
     }
   }
 
@@ -113,7 +148,14 @@ export class AIPythonExecutor implements IPythonAIExecutor {
     _metadata: AITaskItemFixPythonMetadata,
     events: AIEvents
   ): Promise<void> {
+    let cleanup: () => void = () => {}
+    let aborted = false
     try {
+      cleanup = taskItem.observeStatus((status) => {
+        if (status._tag === 'aborting') {
+          aborted = true
+        }
+      })
       const error = getPythonBlockResult(block).find(
         (r): r is PythonErrorOutput => r.type === 'error'
       )
@@ -130,7 +172,11 @@ export class AIPythonExecutor implements IPythonAIExecutor {
       )}`
       const source = getPythonSource(block).toJSON()
 
-      await this.effects.editWithAI(
+      const callback = debounce((suggestions) => {
+        updatePythonAISuggestions(block, suggestions)
+      }, 50)
+
+      const { promise, abortController } = await this.effects.editWithAI(
         this.workspaceId,
         source,
         instructions,
@@ -138,12 +184,32 @@ export class AIPythonExecutor implements IPythonAIExecutor {
         (modelId) => {
           events.aiUsage('python', 'fix', modelId)
         },
-        debounce((suggestions) => {
-          updatePythonAISuggestions(block, suggestions)
-        }, 50)
+        callback
       )
-      taskItem.setCompleted('success')
+
+      if (aborted) {
+        abortController.abort()
+        taskItem.setCompleted('aborted')
+        return
+      }
+
+      cleanup()
+      cleanup = taskItem.observeStatus((status) => {
+        if (status._tag === 'aborting') {
+          abortController.abort()
+          aborted = true
+        }
+      })
+
+      await promise
+      callback.flush()
+      taskItem.setCompleted(aborted ? 'aborted' : 'success')
     } catch (err) {
+      if (err instanceof CanceledError) {
+        taskItem.setCompleted('aborted')
+        return
+      }
+
       logger().error(
         {
           workspaceId: this.workspaceId,
@@ -154,6 +220,8 @@ export class AIPythonExecutor implements IPythonAIExecutor {
         'Error fixing python block with AI'
       )
       taskItem.setCompleted('error')
+    } finally {
+      cleanup()
     }
   }
 
